@@ -20,6 +20,6 @@ You need to download all the files in [Pre-trained model](Vit-Sea-ice-and-lead-c
 You can directly load the model in [Implementation](Vit-Sea-ice-and-lead-classifier/Implementation_on_a_full_image/Implementation_On_Full_Image.ipynb)
 using 
 ``` 
-model = keras.models.load_model('') 
+model = keras.models.load_model('Path') 
 ```
 And follow all the steps in the code file [Implementation](Vit-Sea-ice-and-lead-classifier/Implementation_on_a_full_image/Implementation_On_Full_Image.ipynb)
