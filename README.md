@@ -1,4 +1,4 @@
-# Vit-Sea-ice-and-lead-classifier (This repository is not ready yet :))
+# Vit-Sea-ice-and-lead-classifier 
 This repository contains a complete workflow for classification of sea-ice and lead specifically for OLCI imagery (surely can be adapted to other images at ease). 
 You can follow the steps to train a model yourself or use the model that is pre-trained on around 80 OLCI images (about 10,000 data points) 
 instead of training your own models.
