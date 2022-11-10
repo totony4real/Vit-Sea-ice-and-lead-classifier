@@ -1,36 +1,44 @@
-#pip install -U tensorflow-addons
-#Store all the hyperparameters here
-
-num_classes = 2 #Can be changed to multi-classed classification
-input_shape = (3, 3, 21)#depends on the size of the image we want
-
-learning_rate = 0.001
-weight_decay = 0.0001
-batch_size = 256
-num_epochs = 100
-image_size = 72  
-patch_size = 6  
-num_patches = (image_size // patch_size) ** 2
-projection_dim = 64
-num_heads = 4
-transformer_units = [
-    projection_dim * 2,
-    projection_dim,
-] 
-transformer_layers = 8
-mlp_head_units = [2048, 1024]  
-
 import numpy as np
 import tensorflow as tf
 from tensorflow import keras
 from tensorflow.keras import layers
 import tensorflow_addons as tfa
+from dataclasses import dataclass
+from typing import Tuple
+
+
+@dataclass
+class ViTConfig:
+    """Store all the hyperparameters here"""
+    num_classes: int = 2 #Can be changed to multi-classed classification
+    input_shape: Tuple[int, int, int] = (3, 3, 21) #depends on the size of the image we want
+    learning_rate: float = 0.001
+    weight_decay: float = 0.0001
+    batch_size: int = 256
+    num_epochs: int = 100
+    image_size: int = 72  
+    patch_size: int = 6  
+    projection_dim: int = 64
+    num_heads: int = 4
+    transformer_layers: int = 8
+    mlp_head_units: Tuple[int, int] = (2048, 1024)
+
+    def __post_init__(self):
+        self.num_patches = (self.image_size // self.patch_size) ** 2
+        self.transformer_units = [
+            self.projection_dim * 2,
+            self.projection_dim,
+        ] 
+        self.mlp_head_units = list(self.mlp_head_units)
+
 
 def mlp(x, hidden_units, dropout_rate):
     for units in hidden_units:
         x = layers.Dense(units, activation=tf.nn.gelu)(x)
         x = layers.Dropout(dropout_rate)(x)
     return x
+
+
 class Patches(layers.Layer):
     def __init__(self, patch_size):
         super(Patches, self).__init__()
@@ -48,9 +56,8 @@ class Patches(layers.Layer):
         patch_dims = patches.shape[-1]
         patches = tf.reshape(patches, [batch_size, -1, patch_dims])
         return patches
-#=========================================================================================================
-#=========================================================================================================
-#=========================================================================================================
+        
+
 class PatchEncoder(layers.Layer):
     def __init__(self, num_patches, projection_dim):
         super(PatchEncoder, self).__init__()
@@ -68,29 +75,35 @@ class PatchEncoder(layers.Layer):
 #=========================================================================================================
 #=========================================================================================================
 #=========================================================================================================
-def create_vit_classifier():
-    inputs = layers.Input(shape=input_shape)
+def create_vit_classifier(config: ViTConfig):
+    inputs = layers.Input(shape=config.input_shape)
     # Augment data.
-    augmented = data_augmentation(inputs)
+    # augmented = data_augmentation(inputs)
+    augmented = inputs # TODO: remember to change
     # Create patches.
-    patches = Patches(patch_size)(augmented)
+    patches = Patches(config.patch_size)(augmented)
     # Encode patches.
-    encoded_patches = PatchEncoder(num_patches, projection_dim)(patches)
+    encoded_patches = PatchEncoder(config.num_patches, config.projection_dim)(patches)
 
+    attention_score_dict = {}
     # Create multiple layers of the Transformer block.
-    for _ in range(transformer_layers):
+    for _ in range(config.transformer_layers):
         # Layer normalization 1.
         x1 = layers.LayerNormalization(epsilon=1e-6)(encoded_patches)
         # Create a multi-head attention layer.
-        attention_output = layers.MultiHeadAttention(
-            num_heads=num_heads, key_dim=projection_dim, dropout=0.1
-        )(x1, x1)
+        MHA_layer = layers.MultiHeadAttention(
+            num_heads=config.num_heads, key_dim=config.projection_dim,
+            dropout=0.1
+        )
+        attention_output, attention_scores = MHA_layer(x1, x1, return_attention_scores=True)
+        # Save attention scores
+        attention_score_dict[MHA_layer.name] = attention_scores
         # Skip connection 1.
         x2 = layers.Add()([attention_output, encoded_patches])
         # Layer normalization 2.
         x3 = layers.LayerNormalization(epsilon=1e-6)(x2)
         # MLP.
-        x3 = mlp(x3, hidden_units=transformer_units, dropout_rate=0.1)
+        x3 = mlp(x3, hidden_units=config.transformer_units, dropout_rate=0.1)
         # Skip connection 2.
         encoded_patches = layers.Add()([x3, x2])
 
@@ -99,18 +112,19 @@ def create_vit_classifier():
     representation = layers.Flatten()(representation)
     representation = layers.Dropout(0.5)(representation)
     # Add MLP.
-    features = mlp(representation, hidden_units=mlp_head_units, dropout_rate=0.5)
+    features = mlp(representation, hidden_units=config.mlp_head_units, dropout_rate=0.5)
     # Classify outputs.
-    logits = layers.Dense(num_classes)(features)
+    logits = layers.Dense(config.num_classes)(features)
     # Create the Keras model.
-    model = keras.Model(inputs=inputs, outputs=logits)
+    model = keras.Model(inputs=inputs, outputs=[logits, attention_score_dict])
     return model
+
 #=========================================================================================================
 #=========================================================================================================
 #=========================================================================================================
-def run_experiment(model):
+def run_experiment(model, config: ViTConfig):
     optimizer = tfa.optimizers.AdamW(
-        learning_rate=learning_rate, weight_decay=weight_decay
+        learning_rate=config.learning_rate, weight_decay=config.weight_decay
     )
 
     model.compile(
@@ -147,27 +161,30 @@ def run_experiment(model):
     return history
 
 
-#Import the data generated from Data_Pre_Processing
-import numpy as np
-##Process the data separately and load them since processing the data takes quite some time and we don't want to process it evertime we run the model
-x_test = np.load('/content/drive/MyDrive/Research/Data_project/x_test3.npy')
-x_train  = np.load('/content/drive/MyDrive/Research/Data_project/x_train3.npy')
-y_test  = np.load('/content/drive/MyDrive/Research/Data_project/y_test3.npy')
-y_train  = np.load('/content/drive/MyDrive/Research/Data_project/y_train3.npy')
+if __name__ == "__main__":
+    #Import the data generated from Data_Pre_Processing
+    import numpy as np
+    ##Process the data separately and load them since processing the data takes quite some time and we don't want to process it evertime we run the model
+    x_test = np.load('/content/drive/MyDrive/Research/Data_project/x_test3.npy')
+    x_train  = np.load('/content/drive/MyDrive/Research/Data_project/x_train3.npy')
+    y_test  = np.load('/content/drive/MyDrive/Research/Data_project/y_test3.npy')
+    y_train  = np.load('/content/drive/MyDrive/Research/Data_project/y_train3.npy')
+
+    config = ViTConfig()
+    image_size = config.image_size
+
+    #Augment the dataset by random flip and rotation
+    more_data = keras.Sequential(
+        [layers.Normalization(),layers.Resizing(image_size, image_size),layers.RandomZoom(height_factor=0.2, width_factor=0.2),],
+        name="more_data",)
+    more_data.layers[0].adapt(x_train)
 
 
-#Augment the dataset by random flip and rotation
-more_data = keras.Sequential(
-    [layers.Normalization(),layers.Resizing(ima_size, ima_size),layers.RandomZoom(height_factor=0.2, width_factor=0.2),],
-    name="more_data",)
-more_data.layers[0].adapt(x_train)
+    vit = create_vit_classifier(config)
+    history = run_experiment(vit, config)
 
-
-vit = create_vit_classifier()
-history = run_experiment(vit)
-
-#Save the trained model
-vit.save('path')
+    #Save the trained model
+    vit.save('path')
 
 
 
