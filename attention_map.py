@@ -41,35 +41,35 @@ def attention_rollout_map(image, attention_score_dict):
     return masked_image, mask
 
 
-def attention_heatmap(image, attention_score_dict, config: ViTConfig):
-    """
-    Taken from https://keras.io/examples/vision/probing_vits/
-    Get attention weights of every head in the last layer
-    """
-    patch_size = config.patch_size
-    num_heads = config.num_heads
+# def attention_heatmap(image, attention_score_dict, config: ViTConfig):
+#     """
+#     Taken from https://keras.io/examples/vision/probing_vits/
+#     Get attention weights of every head in the last layer
+#     """
+#     patch_size = config.patch_size
+#     num_heads = config.num_heads
 
-    # Sort the Transformer blocks in order of their depth.
-    attention_score_list = list(attention_score_dict.keys())
-    attention_score_list.sort(key=lambda x: int(x.split("_")[-1]), reverse=True)
+#     # Sort the Transformer blocks in order of their depth.
+#     attention_score_list = list(attention_score_dict.keys())
+#     attention_score_list.sort(key=lambda x: int(x.split("_")[-1]), reverse=True)
 
-    # Process the attention maps for overlay.
-    w_featmap = image.shape[2] // patch_size
-    h_featmap = image.shape[1] // patch_size
-    attention_scores = attention_score_dict[attention_score_list[0]]
+#     # Process the attention maps for overlay.
+#     w_featmap = image.shape[2] // patch_size
+#     h_featmap = image.shape[1] // patch_size
+#     attention_scores = attention_score_dict[attention_score_list[0]]
 
-    # Taking the representations from CLS token.
-    attentions = tf.reshape(attention_scores[0, :, 0, :], (num_heads, -1))
+#     # Taking the representations from CLS token.
+#     attentions = attention_scores[0, :, 0, :].reshape(num_heads, -1)
 
-    # Reshape the attention scores to resemble mini patches.
-    attentions = tf.reshape(attentions, (num_heads, w_featmap, h_featmap))
-    # attentions = attentions.transpose((1, 2, 0))
+#     # Reshape the attention scores to resemble mini patches.
+#     attentions = attentions.reshape(num_heads, w_featmap, h_featmap)
+#     attentions = attentions.transpose((1, 2, 0))
 
-    # Resize the attention patches to 224x224 (224: 14x16).
-    attentions = tf.image.resize(
-        attentions, size=(h_featmap * patch_size, w_featmap * patch_size)
-    )
-    return attentions
+#     # Resize the attention patches to 224x224 (224: 14x16).
+#     attentions = tf.image.resize(
+#         attentions, size=(h_featmap * patch_size, w_featmap * patch_size)
+#     )
+#     return attentions
 
 # %%
 if __name__ == "__main__":
@@ -130,9 +130,10 @@ if __name__ == "__main__":
     image, preprocessed_image = load_image_from_url(img_url, model_type="original_vit")
 
     plt.imshow(image)
+    plt.title("Original image")
     plt.axis("off")
     plt.show()
-    #%%    
+  
     config = ViTConfig(input_shape=(RESOLUTION,RESOLUTION,3))
     vit = create_vit_classifier(config)
     predictions, attention_score_dict = vit(preprocessed_image)
@@ -140,9 +141,12 @@ if __name__ == "__main__":
     # Test attention rollout
     masked_image, mask = attention_rollout_map(image, attention_score_dict)
     plt.imshow(masked_image)
+    plt.title("Masked image")
+    plt.axis("off")
     plt.show()
 
     # Test attention heatmap
+    # attentions = attention_heatmap(preprocessed_image, attention_score_dict, config)
     
 
 # %%
