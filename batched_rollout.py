@@ -1,3 +1,4 @@
+#%%
 import os
 import netCDF4
 import numpy as np
@@ -8,7 +9,7 @@ import tensorflow as tf
 from tensorflow import keras
 import tensorflow_addons as tfa
 from sklearn.feature_extraction import image
-from typing import Tuple, Union
+from typing import Tuple, Union, Dict
 from tqdm import tqdm
 
 
@@ -66,9 +67,6 @@ class BatchedRollout:
         self.fill_value = {}
         self.fill_value['radiance'] = netCDF4.Dataset(OLCI_path+'/Oa01_radiance.nc').variables['Oa01_radiance']._FillValue
         self.fill_value['detector_index'] = netCDF4.Dataset(OLCI_path+'/instrument_data.nc').variables['detector_index']._FillValue
-
-        # Save outputs
-        self.chunked_outputs = {} # Dictionary of form {'subregion key' : prediction at subregion}
 
     def _extract_data_on_subregion(self, data, subregion: Tuple[int, int, int, int], fillvalue=0.0):
         """
@@ -138,11 +136,11 @@ class BatchedRollout:
 
     def full_rollout(self,
                 subregion_shape=(100, 100),
-                minibatchsize=None
+                minibatchsize=None,
+                save=True
                 ):
         """
         Main loop to perform rollout on the entire OLCI image.
-        Outputs a dictionary of result of the form {'subregion key': prediction}
         ------------
         Example:
         ------------
@@ -193,6 +191,7 @@ class BatchedRollout:
             print(f"Mini-batch rollout with batchsize={minibatchsize}")
 
         count = 1
+        chunked_outputs = {}
         for i in range(num_rows_including_remainders):
             for j in range(num_cols_including_remainders):
                 print(f"Subregion: {count}/{num_subregions}")
@@ -208,20 +207,39 @@ class BatchedRollout:
                 ypred = self.subregion_rollout(subregion=subregion, minibatchsize=minibatchsize)
 
                 # Save result
-                self.chunked_outputs[(i, j)] = ypred
-                np.savez(self.logdir+f'/subregion_{count}.npz', key=np.array((i,j)), data=ypred)
+                chunked_outputs[(i, j)] = ypred
+                if save == True:
+                    np.savez(self.logdir+f'/subregion_{count}.npz', key=np.array((i,j)), data=ypred)
 
                 count += 1
 
-                if count == 5:
-                    print("exiting...")
-                    return self.chunked_outputs
+        full_prediction = self.combine_predictions(chunked_outputs)
 
         print("Complete!")
         
-        return self.chunked_outputs
+        return full_prediction
 
+    @staticmethod
+    def combine_predictions(chunked_outputs: Dict):
+        """
+        Combine predictions on each subregion to get a single combined prediction on the full image
+        ------
+        Args:
+        ------
+        :chunked_outputs: A dictionary of form {'subregion key': prediction at subregion} where the
+                          subregion key (i, j) indicates the relative position of the block within
+                          the whole image. E.g. if the whole image is divided into 2x2 subregions,
+                          then the subregion keys will consist of (0,0), (0,1), (1,0), (1,1)
+        """
+        subregion_idxs = np.array(list(chunked_outputs.keys())) # Indices of subregion (encodes relative positions of the blocks)
+        num_rows, num_cols = np.max(subregion_idxs, axis=0)
+        num_rows += 1 # Account for the fact that the first index is 0
+        num_cols += 1
+        blocked_predictions = [[chunked_outputs[(i,j)] for j in range(num_cols)] for i in range(num_rows)]
+        combined_prediction = np.block(blocked_predictions)
+        return combined_prediction
 
+#%%
 if __name__ == "__main__":
     # Set OLCI directory path
     path = '/home/so/Documents/Projects/Vit-Sea-ice-and-lead-classifier/data/'
@@ -231,11 +249,60 @@ if __name__ == "__main__":
     # Load ViT model
     model = keras.models.load_model('/home/so/Documents/Projects/Vit-Sea-ice-and-lead-classifier/Pre_trained_model')
 
-    # Perform batched-rollout on entire OLCI image
+    # Set up rollout module
+    f = BatchedRollout(OLCI_path, model)
+
+    #%%
+    # Perform test rollout on a selected subregion
+    X = 1000
+    Y = 1000
+    H = 400
+    W = 400
+    subregion = (X, Y, H, W)
+    minibatchsize = 256
+    
+    ypred_subregion = f.subregion_rollout(subregion=subregion, minibatchsize=minibatchsize)
+
+    plt.imshow(ypred_subregion)
+    plt.title("predictions on a subregion")
+    plt.show()
+
+    # %%
+    # Perform rollout on the full OLCI image
     subregion_shape = (400, 400)
     minibatchsize = 256
+ 
+    _ = f.full_rollout(subregion_shape=subregion_shape, minibatchsize=minibatchsize, save=True) # May take hours to complete
 
-    rollout = BatchedRollout(OLCI_path, model)
-    _ = rollout(subregion_shape=subregion_shape, minibatchsize=minibatchsize)
+    # %%
+    # Plot predictions on the full image
+    from_saved = True
+
+    if from_saved == True:
+        f = BatchedRollout(OLCI_path, model)
+        inH, inW, _ = f.input_shape
+        HEIGHT = f.image_height
+        WIDTH = f.image_width
+        HEIGHT -= (inH - 1)
+        WIDTH -= (inW - 1)
+        num_rows = np.ceil(HEIGHT / subregion_shape[0]).astype(int)
+        num_cols = np.ceil(WIDTH / subregion_shape[1]).astype(int)
+        num_subregions = num_rows * num_cols
+
+        chunked_outputs = {}
+        for i in range(1,num_subregions+1):
+            loadfile = np.load(f'log/subregion_{i}.npz')
+            key = loadfile['key']
+            pred = loadfile['data']
+            chunked_outputs[tuple(key)] = pred
+
+        full_prediction = BatchedRollout.combine_predictions(chunked_outputs)
+        plt.imshow(full_prediction)
+        plt.title('predictions on the full image')
+
+    else:
+        plt.imshow(_)
+        plt.title('predictions on the full image')
 
 
+# %%
