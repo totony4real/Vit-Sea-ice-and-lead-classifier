@@ -90,7 +90,7 @@ class BatchedRollout:
 
     def subregion_rollout(self,
                           subregion: Tuple[int, int, int, int],
-                          minibatchsize: Union[int, None]
+                          minibatchsize: int
                           ):
         """
         Perform rollout on selected subregion
@@ -126,11 +126,11 @@ class BatchedRollout:
 
 
     def full_rollout(self,
-                subregion_shape=(100, 100),
-                minibatchsize=256,
-                save=True,
-                logdir='./log'
-                ):
+                    subregion_shape=(100, 100),
+                    minibatchsize=256,
+                    save=True,
+                    logdir='./log'
+                    ):
         """
         Main loop to perform rollout on the entire OLCI image.
         ------------
