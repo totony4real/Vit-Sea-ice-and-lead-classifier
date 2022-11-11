@@ -264,7 +264,7 @@ if __name__ == "__main__":
     _ = f.full_rollout(subregion_shape=subregion_shape,
                        minibatchsize=minibatchsize,
                        save=True,
-                       logdir='./log_temp') # May take hours to complete
+                       logdir='./log') # May take hours to complete
 
     # %%
     # Plot predictions on the full image
