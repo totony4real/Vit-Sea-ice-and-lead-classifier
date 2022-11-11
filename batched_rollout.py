@@ -38,7 +38,7 @@ class BatchedRollout:
         self.input_shape = model.layers[0].output_shape[0][1:]
 
         # Load in geolocation (use xarray)
-        geolocation = netCDF4.Dataset(OLCI_path+'/geo_coordinates.nc')
+        geolocation = netCDF4.Dataset(os.path.join(OLCI_path,'geo_coordinates.nc'))
         lat = geolocation.variables['latitude'][:]
         lon = geolocation.variables['longitude'][:]
         X, Y = WGS84toEASE2(lon, lat)
@@ -46,15 +46,15 @@ class BatchedRollout:
         self.image_width = Y.shape[1]
 
         # Load radiance dataset
-        self.radiance_dataset = xr.open_mfdataset(OLCI_path+'/*_radiance.nc', parallel=True)
+        self.radiance_dataset = xr.open_mfdataset(os.path.join(OLCI_path,'*_radiance.nc'), parallel=True)
 
         # Load instrument data
-        self.instrument_dataset = xr.open_dataset(OLCI_path+'/instrument_data.nc')
+        self.instrument_dataset = xr.open_dataset(os.path.join(OLCI_path,'instrument_data.nc'))
         self.solar_flux = self.instrument_dataset['solar_flux'].values.T # Shape (3700, 21)
         self.detector_index = self.instrument_dataset['detector_index']
 
         # Load tie geometries
-        self.tie_geometries = xr.open_dataset(OLCI_path+'/tie_geometries.nc')
+        self.tie_geometries = xr.open_dataset(os.path.join(OLCI_path,'tie_geometries.nc'))
         SZA = self.tie_geometries['SZA']
         angle = np.zeros((self.image_height, self.image_width, 1))
         for j in range(self.image_width):
@@ -63,8 +63,8 @@ class BatchedRollout:
 
         # Get fill-in values to replace NaNs for later use (couldn't get with xarray)
         self.fill_value = {}
-        self.fill_value['radiance'] = netCDF4.Dataset(OLCI_path+'/Oa01_radiance.nc').variables['Oa01_radiance']._FillValue
-        self.fill_value['detector_index'] = netCDF4.Dataset(OLCI_path+'/instrument_data.nc').variables['detector_index']._FillValue
+        self.fill_value['radiance'] = netCDF4.Dataset(os.path.join(OLCI_path,'Oa01_radiance.nc')).variables['Oa01_radiance']._FillValue
+        self.fill_value['detector_index'] = netCDF4.Dataset(os.path.join(OLCI_path,'instrument_data.nc')).variables['detector_index']._FillValue
 
     def _extract_data_on_subregion(self, data, subregion: Tuple[int, int, int, int], fillvalue=0.0):
         """
@@ -110,23 +110,16 @@ class BatchedRollout:
         region_angle = self._extract_data_on_subregion(self.angle, padded_subregion)
         TOA_BRF = self._compute_TOA_BRF(oa, detector_index, region_angle) # Shape (H+(inH-1), W+(inW-1), inH, inW, C)
 
+        # Get dataloader
         x_test_subregion_full = image.extract_patches_2d(TOA_BRF, (inH, inW)) # Shape (H x W, inH, inW, C)
+        dataloader = tf.data.Dataset.from_tensor_slices(x_test_subregion_full)
 
-        N = H * W
-        if minibatchsize == None:
-            # Do a full-batch rollout if minibatchsize is not specified
-            ypred = self.model.predict(x_test_subregion_full) # Shape (N, inH, inW, C)
-        else:
-            # Do mini-batch rollout otherwise
-            dataloader = tf.data.Dataset.from_tensor_slices(x_test_subregion_full)
-            num_batches = np.ceil(N / minibatchsize).astype(int)
-            ypred = []
-            # for i, batch in enumerate(dataloader.batch(minibatchsize)):
-            for batch in tqdm(dataloader.batch(minibatchsize)):
-                # print(f"Batch {i+1}/{num_batches}")
-                y = self.model.predict(batch, verbose=0) # Shape (M, inH, inW, C)
-                ypred.append(y)
-            ypred = np.concatenate(ypred)
+        # Rollout
+        ypred = []
+        for batch in tqdm(dataloader.batch(minibatchsize)):
+            y = self.model.predict(batch, verbose=0)
+            ypred.append(y)
+        ypred = np.concatenate(ypred)
 
         ypred = np.argmax(ypred, axis=1).reshape(H, W) # Get 0/1 predictions
         return ypred
@@ -134,7 +127,7 @@ class BatchedRollout:
 
     def full_rollout(self,
                 subregion_shape=(100, 100),
-                minibatchsize=None,
+                minibatchsize=256,
                 save=True,
                 logdir='./log'
                 ):
@@ -158,7 +151,7 @@ class BatchedRollout:
         Then on each subregion (i, j) for i, j = 1,...,5, we feed the model an input tensor X of size (N, H, W, C) = (100*100, 3, 3, 21),
         which outputs a tensor y of size (N,) = (100*100,)
 
-        We can also minibatch the input tensor X to fit into GPU memory during rollout.
+        We also minibatch the input tensor X to fit into GPU memory during rollout.
         E.g. if minibatch_size = 100, then it will perform 100 iterations of rollout per subregion, where at each iteration,
         an input tensor of size (M, H, W, C) = (100, 3, 3, 21) is fed into the model.
 
@@ -184,10 +177,6 @@ class BatchedRollout:
         num_subregions = num_rows_including_remainders * num_cols_including_remainders
 
         print(f"Total number of subregions: {num_subregions}")
-        if minibatchsize == None:
-            print("Full-batch rollout...")
-        else:
-            print(f"Mini-batch rollout with batchsize={minibatchsize}")
 
         count = 1
         chunked_outputs = {}
@@ -275,7 +264,7 @@ if __name__ == "__main__":
     _ = f.full_rollout(subregion_shape=subregion_shape,
                        minibatchsize=minibatchsize,
                        save=True,
-                       logdir='./log') # May take hours to complete
+                       logdir='./log_temp') # May take hours to complete
 
     # %%
     # Plot predictions on the full image
