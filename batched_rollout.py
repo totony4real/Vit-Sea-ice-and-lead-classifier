@@ -24,7 +24,7 @@ def WGS84toEASE2(lon, lat):
 
 
 class BatchedRollout:
-    def __init__(self, OLCI_path, model, logdir='./log'):
+    def __init__(self, OLCI_path, model):
         """
         Module to run batched-rollout on a given OLCI image
         -------
@@ -32,12 +32,10 @@ class BatchedRollout:
         -------
         :OLCI_path: directory where OLCI image/metadata is stored
         :model:     vision transformer model
-        :logdir:    target directory to save results
         """
 
         self.model = model
         self.input_shape = model.layers[0].output_shape[0][1:]
-        self.logdir = logdir
 
         # Load in geolocation (use xarray)
         geolocation = netCDF4.Dataset(OLCI_path+'/geo_coordinates.nc')
@@ -137,7 +135,8 @@ class BatchedRollout:
     def full_rollout(self,
                 subregion_shape=(100, 100),
                 minibatchsize=None,
-                save=True
+                save=True,
+                logdir='./log'
                 ):
         """
         Main loop to perform rollout on the entire OLCI image.
@@ -209,7 +208,8 @@ class BatchedRollout:
                 # Save result
                 chunked_outputs[(i, j)] = ypred
                 if save == True:
-                    np.savez(self.logdir+f'/subregion_{count}.npz', key=np.array((i,j)), data=ypred)
+                    save_path = os.path.join(logdir, f'subregion_{count}.npz')
+                    np.savez(save_path, key=np.array((i,j)), data=ypred)
 
                 count += 1
 
@@ -242,9 +242,9 @@ class BatchedRollout:
 #%%
 if __name__ == "__main__":
     # Set OLCI directory path
-    path = '/home/so/Documents/Projects/Vit-Sea-ice-and-lead-classifier/data/'
+    path = '/home/so/Documents/Projects/Vit-Sea-ice-and-lead-classifier/data'
     directory = 'S3B_OL_1_EFR____20190301T232521_20190301T232821_20200111T235148_0179_022_301_1800_MR1_R_NT_002.SEN3'
-    OLCI_path = path + directory
+    OLCI_path = os.path.join(path, directory)
 
     # Load ViT model
     model = keras.models.load_model('/home/so/Documents/Projects/Vit-Sea-ice-and-lead-classifier/Pre_trained_model')
@@ -272,37 +272,35 @@ if __name__ == "__main__":
     subregion_shape = (400, 400)
     minibatchsize = 256
  
-    _ = f.full_rollout(subregion_shape=subregion_shape, minibatchsize=minibatchsize, save=True) # May take hours to complete
+    _ = f.full_rollout(subregion_shape=subregion_shape,
+                       minibatchsize=minibatchsize,
+                       save=True,
+                       logdir='./log') # May take hours to complete
 
     # %%
     # Plot predictions on the full image
     from_saved = True
 
     if from_saved == True:
-        f = BatchedRollout(OLCI_path, model)
-        inH, inW, _ = f.input_shape
-        HEIGHT = f.image_height
-        WIDTH = f.image_width
-        HEIGHT -= (inH - 1)
-        WIDTH -= (inW - 1)
-        num_rows = np.ceil(HEIGHT / subregion_shape[0]).astype(int)
-        num_cols = np.ceil(WIDTH / subregion_shape[1]).astype(int)
-        num_subregions = num_rows * num_cols
-
         chunked_outputs = {}
-        for i in range(1,num_subregions+1):
-            loadfile = np.load(f'log/subregion_{i}.npz')
-            key = loadfile['key']
-            pred = loadfile['data']
-            chunked_outputs[tuple(key)] = pred
+        logdir = 'log'
+        for file in os.listdir(logdir):
+            filename = os.fsdecode(file)
+            if filename.endswith(".npz"):
+                loadfile = np.load(os.path.join(logdir, filename))
+                key = loadfile['key']
+                pred = loadfile['data']
+                chunked_outputs[tuple(key)] = pred
 
         full_prediction = BatchedRollout.combine_predictions(chunked_outputs)
         plt.imshow(full_prediction)
         plt.title('predictions on the full image')
+        plt.show()
 
     else:
         plt.imshow(_)
         plt.title('predictions on the full image')
+        plt.show()
 
 
 # %%
