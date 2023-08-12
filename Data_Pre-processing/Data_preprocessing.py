@@ -610,10 +610,7 @@ images_cnn=np.concatenate((images1,images0))
 
 print(images_cnn.shape)
     
-# ###SPLITTING INTO TRAINING, VALIDATION AND TESTING DATA###
-# random_state simply sets a seed to the random generator, so that your train-test splits are always deterministic. If you don't set a seed, it is different each time
-train_images,validation_images,train_labels,validation_labels,train_indices,validation_indices,train_files,validation_files= train_test_split(images_cnn,labels_cnn,indices_cnn,files_cnn, test_size=0.5, random_state=42)
-validation_images,test_images,validation_labels,test_labels,validation_indices,test_indices,validation_files,test_files= train_test_split(validation_images,validation_labels,validation_indices,validation_files, test_size=0.45, random_state=42)
+train_images, test_images, train_labels, test_labels, train_indices, test_indices, train_files, test_files = train_test_split(images_cnn, labels_cnn, indices_cnn, files_cnn, test_size=0.3, random_state=42)
 
 #Save the data in the form of numpy arrays
 np.save('x_train96', train_images)
