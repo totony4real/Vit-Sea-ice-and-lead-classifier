@@ -7,19 +7,19 @@ This repository is quite straight forward and easy to follow for two purposes:
 * Implement the model straightaway
 
 ## Follow these steps if you want to start from scartch
-* [Data pre-processing](Vit-Sea-ice-and-lead-classifier/Data_Pre-processing)
-* [Model Training](Vit-Sea-ice-and-lead-classifier/Model_Training)
-* [Implementation](Vit-Sea-ice-and-lead-classifier/Implementation_on_a_full_image)
+* [Data pre-processing](Data_Pre-processing)
+* [Model Training](Model_Training)
+* [Implementation](Implementation_on_a_full_image)
 
 Please go to each folder one by one and explanation has been given (either in the introduction of each folder or in the specific python file)
 
 ## Follow these steps if you want use the model directly
 
-You need to download all the files in [Pre-trained model](Vit-Sea-ice-and-lead-classifier/Pre_trained_model)
+You need to download all the files in [Pre-trained model](Pre_trained_model)
 
-You can directly load the model in [Implementation](Vit-Sea-ice-and-lead-classifier/Implementation_on_a_full_image/Implementation_On_Full_Image.ipynb)
+You can directly load the model in [Implementation](Implementation_on_a_full_image/Implementation_On_Full_Image.ipynb)
 using 
 ``` 
 model = keras.models.load_model('Path') 
 ```
-And follow all the steps in the code file [Implementation](Vit-Sea-ice-and-lead-classifier/Implementation_on_a_full_image/Implementation_On_Full_Image.ipynb)
+And follow all the steps in the code file [Implementation](Implementation_on_a_full_image/Implementation_On_Full_Image.ipynb)
