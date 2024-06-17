@@ -22,4 +22,4 @@ using
 ``` 
 model = keras.models.load_model('Path') 
 ```
-And follow all the steps in the code file [Implementation](Vit-Sea-ice-and-lead-classifier/Implementation on a full image/Implementation_On_Full_Image.ipynb)
+And follow all the steps in the code file [Implementation](Vit-Sea-ice-and-lead-classifier/Implementation_on_a_full_image/Implementation_On_Full_Image.ipynb)
